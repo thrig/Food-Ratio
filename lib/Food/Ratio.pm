@@ -16,15 +16,13 @@ use constant {
     ORDER  => 3,
     RATIO  => 4,
 };
+has $things :reader;        # individual ingredients (aref of aref)
+has $groups :reader;        # groups of ingredients (href of aref)
+has $total  :reader;        # (aref)
 
 has $key :reader;           # ratio key ingredient, group, or total
-has $total_percent = 0;     # $total but in percent by way of ratio()
 
-has $things :reader;        # individual ingredients
-has $groups :reader;        # groups of ingredients ("flours", "dry", etc)
-has $total  :reader;
-
-has $index_group = 0;        # to keep the output in input addition order
+has $index_group = 0;       # to keep the output in input addition order
 
 ADJUST {
     $groups = {};
@@ -56,6 +54,32 @@ method add($mass, $name, @rest) {
     return $self;
 }
 
+method details() {
+    croak "ratio has not been called" unless defined $key;
+    my %details;
+    for my $ref (@$things) {
+        push $details{ingredients}->@*, {
+            groups => [ $ref->[GROUPS]->@* ],
+            mass => $ref->[MASS],
+            name => $ref->[NAME],
+            ratio => $ref->[RATIO],
+        }
+    }
+    for my $ref (nsort_by { $_->[ORDER] } values %$groups) {
+        push $details{groups}->@*, {
+            mass => $ref->[MASS],
+            name => $ref->[NAME],
+            order => $ref->[ORDER],
+            ratio => $ref->[RATIO],
+        }
+    }
+    $details{total} = {
+        mass => $total->[MASS],
+        ratio => $total->[RATIO],
+    };
+    return \%details;
+}
+
 # the ratio could be based on the total amount, or for cooking there is
 # more likely some key ingredient--flour--or a group of ingredients,
 # such as a variety of flours that together form the total for the ratio
@@ -79,7 +103,7 @@ method ratio(%param) {
         croak "group must be something"
           unless defined $param{group} and length $param{group};
         croak "no such group '$param{group}'" unless exists $groups->{ $param{group} };
-        $key    = $groups->{ $param{groups} };
+        $key    = $groups->{ $param{group} };
         $amount = $key->[MASS];
     } else {
         $key = $total;
@@ -91,24 +115,20 @@ method ratio(%param) {
     return $self;
 }
 
-# TODO some callback form for generic but without access to module internals foo
-
-# TODO mass prints need a sprintf
 method string() {
     croak "ratio has not been called" unless defined $key;
     my $s = '';
     for my $ref (@$things) {
         $s .= join( "\t",
-            $ref->[MASS], sprintf( '%.4g%%', $ref->[RATIO] ),
+            sprintf( "%.4g\t%.4g%%", $ref->@[MASS, RATIO] ),
             $ref->[NAME], $ref->[GROUPS]->@* )
           . "\n";
     }
     if ( keys %$groups ) {
         $s .= "--\n";
-        for my $gname ( nsort_by { $groups->{$_}[ORDER] } keys %$groups ) {
-            my $ref = $groups->{$gname};
+        for my $ref ( nsort_by { $_->[ORDER] } values %$groups ) {
             $s .=
-              join( "\t", $ref->[MASS], sprintf( '%.4g%%', $ref->[RATIO] ), $ref->[NAME] )
+              join( "\t", sprintf( "%.4g\t%.4g%%", $ref->@[MASS, RATIO] ), $ref->[NAME] )
               . "\n";
         }
     }
@@ -165,15 +185,17 @@ Food::Ratio - calculate ingredient ratios
   use Food::Ratio;
   my $fr = Food::Ratio->new;
 
+  # add some ingredients of various amounts
   $fr->add( 500,  'flour' );
   $fr->add( 360,  'water' );    # at 90F to 95F
   $fr->add( 11.5, 'salt'  );
   $fr->add( 2,    'yeast' );
 
+  # make flour the basis for the ratio
   $fr->ratio( id => 'flour' );
 
+  # emit to a string form
   print $fr->string;
-
   # 500   100.00% flour
   # 360   72.00%  water
   # 11.5  2.30%   salt
@@ -183,16 +205,20 @@ Food::Ratio - calculate ingredient ratios
 
   # how much of the other are required given 9 grams of yeast?
   $fr->weigh( 9, id => 'yeast' );
-  print $fr->string;
 
-The observant may notice that the water and salt amounts are a bit off
-from the normal bread recipe. This is easier to see in ratio form.
+  # emit to a data structure that could be converted to JSON
+  use Data::Dumper;
+  print Dumper $fr->details;
+
+The observant may notice that the water and salt are a bit off from the
+normal bread recipe. This is easier to see in ratio form.
 
 =head1 DESCRIPTION
 
-This module calculates the ratios of ingredients, with the ability to
-select what ingredient or group of ingredients the ratio is based on.
-The masses of the ingredients can be adjusted with B<weigh>.
+This module calculates ratios of ingredients, with the ability to select
+what ingredient or group of ingredients the ratio is based on. With a
+ratio, the masses of the ingredients can then be adjusted with B<weigh>,
+which can be of any particular ingredient or group of ingredients.
 
 =head1 METHODS
 
@@ -216,6 +242,12 @@ for example
 when there are multiple types of flour, and one wants to base the ratio
 on the I<group> gflour, not the ingredient flour. The group could be
 named "flour"; it is named "gflour" here for clarity of documentation.
+
+=item B<details>
+
+Returns a hash reference of the internal details. Must be called after
+B<ratio>, and ideally after a few B<add> calls. L<Data::Dumper> will
+show the form of the resulting structure.
 
 =item B<new>
 
@@ -272,7 +304,8 @@ This updates the mass of all the ingredients, etc, in the object.
 
 The data returned by these probably should not be fiddled with. On the
 other hand, the internal details are unlikely to change. I assume you
-know your way around L<Data::Dumper>.
+know your way around L<Data::Dumper>. The B<details> method is probably
+a better way to get at this data?
 
 =over 4
 
@@ -304,9 +337,6 @@ The total mass of every ingredient added.
 =head1 BUGS
 
 Bugs are commonly present in flour and other ingredients.
-
-A better interface then B<string> is doubtless required for output to
-other media (e.g. if the ratios are being written to a database). TODO
 
 =head1 SEE ALSO
 

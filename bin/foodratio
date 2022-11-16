@@ -65,6 +65,15 @@ the ratio between those various inputs, optionally using some ingredient
 (or group of ingredients) as the ratio key. The weights can be
 recalculated based on the measurement of a particular ingredient.
 
+The input should be in columns, with the mass (or whatever measurement)
+as the first column. This must be a strictly positive number. If the
+second column contains C<%> it will be ignored, on the presumption that
+that is a ratio. Thus the name (id) of the ingredient will come from
+either the second or third column. The remainder of the columns, if
+any, will be treated as group names that collect ingredients into
+groups, e.g. a custom C<flour> group for recipes with different types
+of flour, or so forth.
+
 =head2 Options
 
 =over 4
@@ -83,7 +92,7 @@ default total mass. I<key> must be C<id> or C<group>.
 =item B<weigh> I<key:value>
 
 Sets the ingredient or ingredient group to use as the basis for the
-B<mass> argument, which by default is otherwise the totall mass.
+B<mass> argument, which by default is otherwise the total mass.
 
 =back
 
